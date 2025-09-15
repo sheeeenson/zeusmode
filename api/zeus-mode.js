@@ -1,40 +1,58 @@
-import { GoogleGenerativeAI } from "@google/generative-ai";
+// ВАЖНО: ХРАНИТЕ ВАШ API КЛЮЧ В ПЕРЕМЕННЫХ ОКРУЖЕНИЯ!
+// На Vercel это можно сделать в Settings > Environment Variables.
+// Ключ будет доступен в переменной окружения VERCEL_GEMINI_API_KEY.
+const API_KEY = process.env.VERCEL_GEMINI_API_KEY;
 
-// Инициализируем API с ключом из переменных окружения Vercel
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-const model = genAI.getGenerativeModel({ model: "gemini-pro" });
+// Модель, которую мы используем.
+const API_MODEL = "gemini-2.5-flash-preview-05-20";
+const API_URL = `https://generativelanguage.googleapis.com/v1beta/models/${API_MODEL}:generateContent?key=${API_KEY}`;
 
-// Экспортируем функцию-обработчик для Vercel
-export default async function handler(req, res) {
-  if (req.method !== 'POST') {
-    return res.status(405).json({ message: 'Метод не разрешен' });
+// Функция-обработчик для Vercel.
+// Здесь мы получаем запрос от вашего сайта, вызываем API Gemini
+// и возвращаем результат обратно.
+export default async function (request, response) {
+  if (request.method !== 'POST') {
+    return response.status(405).json({ error: 'Method Not Allowed' });
   }
 
-  const { userQuery, systemPrompt } = req.body;
-
-  if (!userQuery) {
-    return res.status(400).json({ message: 'Отсутствует текст запроса' });
+  // Проверка наличия API-ключа
+  if (!API_KEY) {
+    return response.status(500).json({ error: 'VERCEL_GEMINI_API_KEY is not set in environment variables.' });
   }
 
   try {
-    const chat = model.startChat({
-      history: [
-        {
-          role: "user",
-          parts: [{ text: systemPrompt }],
-        },
-      ],
-      generationConfig: {
-        maxOutputTokens: 100,
-      },
+    const { userPrompt, systemPrompt } = request.body;
+
+    const payload = {
+      contents: [{ parts: [{ text: userPrompt }] }],
+      tools: [{ "google_search": {} }],
+      systemInstruction: { parts: [{ text: systemPrompt }] },
+    };
+
+    const apiResponse = await fetch(API_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
     });
 
-    const result = await chat.sendMessage(userQuery);
-    const text = result.response.text();
+    if (!apiResponse.ok) {
+      // Возвращаем полный текст ошибки от API
+      const errorText = await apiResponse.text();
+      return response.status(apiResponse.status).json({ error: `API error: ${apiResponse.statusText}. Details: ${errorText}` });
+    }
 
-    res.status(200).json({ text });
+    const result = await apiResponse.json();
+    const candidate = result.candidates?.[0];
+    const text = candidate?.content?.parts?.[0]?.text;
+
+    if (!text) {
+      return response.status(500).json({ error: 'No content returned from Gemini API.' });
+    }
+    
+    // Возвращаем только сгенерированный текст.
+    return response.status(200).json({ text: text.replace(/\*/g, '').trim() });
   } catch (error) {
-    console.error('Ошибка при обращении к Gemini API:', error);
-    res.status(500).json({ message: 'Внутренняя ошибка сервера' });
+    console.error('Proxy function error:', error);
+    return response.status(500).json({ error: 'Failed to process request.' });
   }
-}
+};
