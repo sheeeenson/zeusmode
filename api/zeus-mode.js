@@ -1,58 +1,73 @@
-// ВАЖНО: ХРАНИТЕ ВАШ API КЛЮЧ В ПЕРЕМЕННЫХ ОКРУЖЕНИЯ!
-// На Vercel это можно сделать в Settings > Environment Variables.
-// Ключ будет доступен в переменной окружения VERCEL_GEMINI_API_KEY.
-const API_KEY = process.env.VERCEL_GEMINI_API_KEY;
+// Этот файл отвечает за вызовы к Gemini API.
+// Для того чтобы он работал, вам нужно вставить ваш API-ключ ниже.
+// Если вы используете эту программу в среде Canvas, ключ будет предоставлен автоматически.
+// В противном случае, вставьте свой ключ, полученный с Google AI Studio.
+const API_KEY = process.env.VERCEL_GEMINI_API_KEY; // Вставьте ваш ключ здесь, если это необходимо
 
-// Модель, которую мы используем.
-const API_MODEL = "gemini-2.5-flash-preview-05-20";
-const API_URL = `https://generativelanguage.googleapis.com/v1beta/models/${API_MODEL}:generateContent?key=${API_KEY}`;
+/**
+ * Выполняет вызов к API Gemini.
+ * @param {string} prompt - Текст запроса для генерации.
+ * @param {boolean} isAudio - Флаг, указывающий, нужно ли генерировать аудио.
+ * @param {string} voice - Голос для генерации аудио.
+ * @returns {Promise<string|ArrayBuffer>} Сгенерированный текст или аудиоданные.
+ */
+export async function callGeminiApi(prompt, isAudio = false, voice = "Kore") {
+    let url = "";
+    let payload = {};
+    const model = isAudio ? "gemini-2.5-flash-preview-tts" : "gemini-2.5-flash-preview-05-20";
 
-// Функция-обработчик для Vercel.
-// Здесь мы получаем запрос от вашего сайта, вызываем API Gemini
-// и возвращаем результат обратно.
-export default async function (request, response) {
-  if (request.method !== 'POST') {
-    return response.status(405).json({ error: 'Method Not Allowed' });
-  }
-
-  // Проверка наличия API-ключа
-  if (!API_KEY) {
-    return response.status(500).json({ error: 'VERCEL_GEMINI_API_KEY is not set in environment variables.' });
-  }
-
-  try {
-    const { userPrompt, systemPrompt } = request.body;
-
-    const payload = {
-      contents: [{ parts: [{ text: userPrompt }] }],
-      tools: [{ "google_search": {} }],
-      systemInstruction: { parts: [{ text: systemPrompt }] },
-    };
-
-    const apiResponse = await fetch(API_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
-
-    if (!apiResponse.ok) {
-      // Возвращаем полный текст ошибки от API
-      const errorText = await apiResponse.text();
-      return response.status(apiResponse.status).json({ error: `API error: ${apiResponse.statusText}. Details: ${errorText}` });
+    if (isAudio) {
+        url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${API_KEY}`;
+        payload = {
+            contents: [{ parts: [{ text: prompt }] }],
+            generationConfig: {
+                responseModalities: ["AUDIO"],
+                speechConfig: {
+                    voiceConfig: {
+                        prebuiltVoiceConfig: { voiceName: voice }
+                    }
+                }
+            },
+            model: model
+        };
+    } else {
+        url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${API_KEY}`;
+        payload = {
+            contents: [{ parts: [{ text: prompt }] }]
+        };
     }
 
-    const result = await apiResponse.json();
-    const candidate = result.candidates?.[0];
-    const text = candidate?.content?.parts?.[0]?.text;
+    try {
+        const response = await fetch(url, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(payload),
+        });
 
-    if (!text) {
-      return response.status(500).json({ error: 'No content returned from Gemini API.' });
+        if (!response.ok) {
+            const errorData = await response.json();
+            console.error('Ошибка API:', errorData);
+            throw new Error(`Ошибка API с кодом состояния: ${response.status}`);
+        }
+
+        const result = await response.json();
+        if (isAudio) {
+            const audioData = result?.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+            if (!audioData) {
+                throw new Error("Не удалось получить аудиоданные из ответа.");
+            }
+            return audioData;
+        } else {
+            const text = result?.candidates?.[0]?.content?.parts?.[0]?.text;
+            if (!text) {
+                throw new Error("Не удалось получить текст из ответа.");
+            }
+            return text;
+        }
+    } catch (e) {
+        console.error("Ошибка при вызове API:", e);
+        throw new Error("Не удалось выполнить запрос к API.");
     }
-    
-    // Возвращаем только сгенерированный текст.
-    return response.status(200).json({ text: text.replace(/\*/g, '').trim() });
-  } catch (error) {
-    console.error('Proxy function error:', error);
-    return response.status(500).json({ error: 'Failed to process request.' });
-  }
-};
+}
