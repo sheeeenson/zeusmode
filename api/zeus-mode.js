@@ -1,75 +1,40 @@
-import fetch from 'node-fetch';
+import { GoogleGenerativeAI } from "@google/generative-ai";
 
-export default async function handler(request, response) {
-  // Получаем API-ключ из переменной окружения Vercel.
-  // Это самый безопасный способ хранения ключа.
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) {
-    // Эта ошибка будет видна в логах Vercel.
-    console.error('API key is not set. Please add GEMINI_API_KEY to Vercel environment variables.');
-    return response.status(500).json({ error: 'API key is not set.' });
+// Инициализируем API с ключом из переменных окружения Vercel
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+const model = genAI.getGenerativeModel({ model: "gemini-pro" });
+
+// Экспортируем функцию-обработчик для Vercel
+export default async function handler(req, res) {
+  if (req.method !== 'POST') {
+    return res.status(405).json({ message: 'Метод не разрешен' });
   }
 
-  // Получаем данные, отправленные с вашего фронтенда (index.html).
-  // Эти данные содержат вопрос пользователя и системные инструкции для ИИ.
-  const { userQuery, systemPrompt } = request.body;
+  const { userQuery, systemPrompt } = req.body;
 
-  // Формируем полезную нагрузку (payload) для запроса к Gemini API.
-  const payload = {
-    contents: [{ parts: [{ text: userQuery }] }],
-    systemInstruction: {
-      parts: [{ text: systemPrompt }]
-    },
-  };
-
-  const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${apiKey}`;
-
-  let retries = 0;
-  const maxRetries = 3;
-  const initialDelay = 1000;
-
-  // Функция для повторных попыток при ошибке (например, слишком много запросов).
-  const fetchWithRetry = async (url, options) => {
-    try {
-      const apiResponse = await fetch(url, options);
-      if (apiResponse.status === 429) {
-        if (retries < maxRetries) {
-          retries++;
-          const delay = initialDelay * Math.pow(2, retries - 1);
-          await new Promise(resolve => setTimeout(resolve, delay));
-          return fetchWithRetry(url, options);
-        } else {
-          console.error('Too many requests after multiple retries.');
-          throw new Error('Too many requests. Please try again later.');
-        }
-      }
-      if (!apiResponse.ok) {
-        // Логируем более подробную информацию об ошибке API.
-        const errorBody = await apiResponse.text();
-        console.error(`Gemini API call failed. Status: ${apiResponse.status} ${apiResponse.statusText}`);
-        console.error('Error response body:', errorBody);
-        throw new Error(`API call failed with status: ${apiResponse.status}`);
-      }
-      return apiResponse;
-    } catch (error) {
-      throw error;
-    }
-  };
+  if (!userQuery) {
+    return res.status(400).json({ message: 'Отсутствует текст запроса' });
+  }
 
   try {
-    const apiResponse = await fetchWithRetry(apiUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
+    const chat = model.startChat({
+      history: [
+        {
+          role: "user",
+          parts: [{ text: systemPrompt }],
+        },
+      ],
+      generationConfig: {
+        maxOutputTokens: 100,
+      },
     });
-    const result = await apiResponse.json();
-    const text = result?.candidates?.[0]?.content?.parts?.[0]?.text || "Молнии сейчас заняты на Олимпе. Попробуй позже.";
 
-    // Отправляем ответ обратно на ваш фронтенд.
-    response.status(200).json({ text });
+    const result = await chat.sendMessage(userQuery);
+    const text = result.response.text();
 
+    res.status(200).json({ text });
   } catch (error) {
-    console.error('Failed to get AI response:', error);
-    response.status(500).json({ error: 'Failed to fetch from Gemini API.' });
+    console.error('Ошибка при обращении к Gemini API:', error);
+    res.status(500).json({ message: 'Внутренняя ошибка сервера' });
   }
 }
