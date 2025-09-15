@@ -5,6 +5,8 @@ export default async function handler(request, response) {
   // Это самый безопасный способ хранения ключа.
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
+    // Эта ошибка будет видна в логах Vercel.
+    console.error('API key is not set. Please add GEMINI_API_KEY to Vercel environment variables.');
     return response.status(500).json({ error: 'API key is not set.' });
   }
 
@@ -37,10 +39,15 @@ export default async function handler(request, response) {
           await new Promise(resolve => setTimeout(resolve, delay));
           return fetchWithRetry(url, options);
         } else {
+          console.error('Too many requests after multiple retries.');
           throw new Error('Too many requests. Please try again later.');
         }
       }
       if (!apiResponse.ok) {
+        // Логируем более подробную информацию об ошибке API.
+        const errorBody = await apiResponse.text();
+        console.error(`Gemini API call failed. Status: ${apiResponse.status} ${apiResponse.statusText}`);
+        console.error('Error response body:', errorBody);
         throw new Error(`API call failed with status: ${apiResponse.status}`);
       }
       return apiResponse;
@@ -66,4 +73,3 @@ export default async function handler(request, response) {
     response.status(500).json({ error: 'Failed to fetch from Gemini API.' });
   }
 }
-
