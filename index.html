@@ -279,7 +279,7 @@
   .schedule-content p, .training-content p, .archetype-content p, .schedule-content ul, .training-content ul, .archetype-content ul {
     margin-top: 8px;
   }
-  .schedule-content ul, .archetype-content ul {
+  .schedule-content ul, .training-content ul {
     list-style-type: none;
     padding-left: 0;
   }
@@ -561,10 +561,6 @@
 </main>
 
 <script>
-  // Global timer variables
-  let practiceTimerInterval;
-  let currentPracticeDuration;
-
   // === UI Helpers ===
   function show(id) {
     document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
@@ -720,7 +716,13 @@
     const systemPrompt = "Ты — не просто персонаж, ты — воплощение принципов силы, порядка и стратегического мышления. Твоя задача — давать конкретные, применимые инструкции, которые помогают достичь состояния полного контроля в реальной жизни. Избегай пафосных, абстрактных и метафоричных фраз. Сосредоточься на физических действиях (поза, осанка, взгляд, хват), ментальном фокусе (стратегия, осознанность) и контроле среды (атмосфера, звук). Всегда используй нумерованный список (1., 2., 3., ...) для структурирования ответа. Не используй жирный шрифт, курсив, звёздочки или другие символы для выделения текста. Ответы должны быть краткими, прямыми и сильными, как удар молнии. Говори на русском языке.";
     const userQuery = `Как бы ты, как Зевс, поступил в ситуации: "${question}"?`;
 
-    // Make a request to the serverless function
+    const payload = {
+        contents: [{ parts: [{ text: userQuery }] }],
+        systemInstruction: {
+            parts: [{ text: systemPrompt }]
+        },
+    };
+
     let retries = 0;
     const maxRetries = 3;
     const initialDelay = 1000;
@@ -749,10 +751,12 @@
     };
 
     try {
-        const response = await fetchWithRetry('/api/generate-text', {
+        // Теперь мы отправляем запрос на нашу серверную функцию Vercel,
+        // а не напрямую к API Gemini.
+        const response = await fetchWithRetry('/api/zeus-mode', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ userQuery, systemPrompt })
+            body: JSON.stringify(payload)
         });
         const result = await response.json();
         const text = result?.text || "Молнии сейчас заняты на Олимпе. Попробуй позже.";
