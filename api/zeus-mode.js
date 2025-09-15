@@ -10,48 +10,43 @@ const API_URL = `https://generativelanguage.googleapis.com/v1beta/models/${API_M
 // Здесь мы получаем запрос от вашего сайта, вызываем API Gemini
 // и возвращаем результат обратно.
 export default async function (request, response) {
-  if (request.method !== 'POST') {
-    return response.status(405).json({ error: 'Method Not Allowed' });
-  }
+  if (request.method !== 'POST') {
+    return response.status(405).json({ error: 'Method Not Allowed' });
+  }
 
-  // Проверка наличия API-ключа
-  if (!API_KEY) {
-    return response.status(500).json({ error: 'VERCEL_GEMINI_API_KEY is not set in environment variables.' });
-  }
+  // Проверка наличия API-ключа
+  if (!API_KEY) {
+    return response.status(500).json({ error: 'VERCEL_GEMINI_API_KEY is not set in environment variables.' });
+  }
 
-  try {
-    const { userPrompt, systemPrompt } = request.body;
+  try {
+    // Получаем весь payload, отправленный с фронтенда.
+    const payload = request.body;
 
-    const payload = {
-      contents: [{ parts: [{ text: userPrompt }] }],
-      tools: [{ "google_search": {} }],
-      systemInstruction: { parts: [{ text: systemPrompt }] },
-    };
+    const apiResponse = await fetch(API_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
 
-    const apiResponse = await fetch(API_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
+    if (!apiResponse.ok) {
+      // Возвращаем полный текст ошибки от API
+      const errorText = await apiResponse.text();
+      return response.status(apiResponse.status).json({ error: `API error: ${apiResponse.statusText}. Details: ${errorText}` });
+    }
 
-    if (!apiResponse.ok) {
-      // Возвращаем полный текст ошибки от API
-      const errorText = await apiResponse.text();
-      return response.status(apiResponse.status).json({ error: `API error: ${apiResponse.statusText}. Details: ${errorText}` });
-    }
+    const result = await apiResponse.json();
+    const candidate = result.candidates?.[0];
+    const text = candidate?.content?.parts?.[0]?.text;
 
-    const result = await apiResponse.json();
-    const candidate = result.candidates?.[0];
-    const text = candidate?.content?.parts?.[0]?.text;
-
-    if (!text) {
-      return response.status(500).json({ error: 'No content returned from Gemini API.' });
-    }
-    
-    // Возвращаем только сгенерированный текст.
-    return response.status(200).json({ text: text.replace(/\*/g, '').trim() });
-  } catch (error) {
-    console.error('Proxy function error:', error);
-    return response.status(500).json({ error: 'Failed to process request.' });
-  }
+    if (!text) {
+      return response.status(500).json({ error: 'No content returned from Gemini API.' });
+    }
+    
+    // Возвращаем только сгенерированный текст.
+    return response.status(200).json({ text: text.replace(/\*/g, '').trim() });
+  } catch (error) {
+    console.error('Proxy function error:', error);
+    return response.status(500).json({ error: 'Failed to process request.' });
+  }
 };
