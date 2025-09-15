@@ -590,6 +590,21 @@
     clearInterval(practiceTimerInterval);
   }
 
+  // Sets up the practice screen with the correct details
+  function setupPracticeScreen(title, description, duration) {
+    document.getElementById('practice-title').textContent = title;
+    document.getElementById('practice-description').textContent = description;
+    document.getElementById('practice-timer-display').textContent = `${String(Math.floor(duration / 60)).padStart(2, '0')}:${String(duration % 60).padStart(2, '0')}`;
+    currentPracticeDuration = duration;
+
+    // Show start button and hide stop button initially
+    document.getElementById('btn-start-practice-timer').style.display = 'block';
+    document.getElementById('btn-stop-practice-timer').style.display = 'none';
+
+    show('screen-practice-detail');
+    flashEffect();
+  }
+  
   // Starts the countdown timer for practices
   function startPracticeTimer(durationInSeconds) {
     let timerDisplay = document.getElementById('practice-timer-display');
@@ -619,20 +634,6 @@
     }, 1000);
   }
 
-  // Sets up the practice screen with the correct details
-  function setupPracticeScreen(title, description, duration) {
-    document.getElementById('practice-title').textContent = title;
-    document.getElementById('practice-description').textContent = description;
-    document.getElementById('practice-timer-display').textContent = `${String(Math.floor(duration / 60)).padStart(2, '0')}:${String(duration % 60).padStart(2, '0')}`;
-    currentPracticeDuration = duration;
-
-    // Show start button and hide stop button initially
-    document.getElementById('btn-start-practice-timer').style.display = 'block';
-    document.getElementById('btn-stop-practice-timer').style.display = 'none';
-
-    show('screen-practice-detail');
-    flashEffect();
-  }
 
   // === Screen Navigation and Event Listeners ===
   document.getElementById('btn-enter').addEventListener('click', () => {
